@@ -26,6 +26,9 @@
 
 #if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_STMPE610
 #include "esp_lcd_touch_stmpe610.h"
+#elif CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_CST816S
+#include "esp_lcd_touch_cst816s.h"
+#include <driver/i2c.h>
 #endif
 
 static const char *TAG = "example";
@@ -39,23 +42,30 @@ static const char *TAG = "example";
 #define EXAMPLE_LCD_PIXEL_CLOCK_HZ     (20 * 1000 * 1000)
 #define EXAMPLE_LCD_BK_LIGHT_ON_LEVEL  1
 #define EXAMPLE_LCD_BK_LIGHT_OFF_LEVEL !EXAMPLE_LCD_BK_LIGHT_ON_LEVEL
-// #define EXAMPLE_PIN_NUM_SCLK           18
-// #define EXAMPLE_PIN_NUM_MOSI           19
-// #define EXAMPLE_PIN_NUM_MISO           21
-// #define EXAMPLE_PIN_NUM_LCD_DC         5
-// #define EXAMPLE_PIN_NUM_LCD_RST        3
-// #define EXAMPLE_PIN_NUM_LCD_CS         4
-// #define EXAMPLE_PIN_NUM_BK_LIGHT       2
-// #define EXAMPLE_PIN_NUM_TOUCH_CS       15
 
-#define EXAMPLE_PIN_NUM_SCLK 18
-#define EXAMPLE_PIN_NUM_MOSI 19
-#define EXAMPLE_PIN_NUM_MISO 21
-#define EXAMPLE_PIN_NUM_LCD_DC 5
-#define EXAMPLE_PIN_NUM_LCD_RST 3
-#define EXAMPLE_PIN_NUM_LCD_CS 4
-#define EXAMPLE_PIN_NUM_BK_LIGHT 2
-#define EXAMPLE_PIN_NUM_TOUCH_CS 15
+#if CONFIG_EXAMPLE_LCD_CONTROLLER_ILI9341
+  #define EXAMPLE_PIN_NUM_SCLK           18
+  #define EXAMPLE_PIN_NUM_MOSI           19
+  #define EXAMPLE_PIN_NUM_MISO           21
+  #define EXAMPLE_PIN_NUM_LCD_DC         5
+  #define EXAMPLE_PIN_NUM_LCD_RST        3
+  #define EXAMPLE_PIN_NUM_LCD_CS         4
+  #define EXAMPLE_PIN_NUM_BK_LIGHT       2
+#elif CONFIG_EXAMPLE_LCD_CONTROLLER_GC9A01
+  #define EXAMPLE_PIN_NUM_SCLK 10
+  #define EXAMPLE_PIN_NUM_MOSI 11
+  #define EXAMPLE_PIN_NUM_MISO 12
+  #define EXAMPLE_PIN_NUM_LCD_DC 8
+  #define EXAMPLE_PIN_NUM_LCD_RST 14
+  #define EXAMPLE_PIN_NUM_LCD_CS 9
+  #define EXAMPLE_PIN_NUM_BK_LIGHT 2
+#endif
+
+#if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_STMPE610
+#define EXAMPLE_PIN_NUM_TOUCH_CS       15
+#elif CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_CST816S
+
+#endif
 
 // The pixel number in horizontal and vertical
 #if CONFIG_EXAMPLE_LCD_CONTROLLER_ILI9341
@@ -212,6 +222,23 @@ static void example_lvgl_port_task(void *arg)
     }
 }
 
+#if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_CST816S
+
+void i2c_init(void)
+{
+  const i2c_config_t i2c_conf = {
+      .mode = I2C_MODE_MASTER,
+      .sda_io_num = 6,
+      .sda_pullup_en = GPIO_PULLUP_ENABLE,
+      .scl_io_num = 7,
+      .scl_pullup_en = GPIO_PULLUP_ENABLE,
+      .master.clk_speed = 400000};
+  i2c_param_config(0, &i2c_conf);
+  i2c_driver_install(0, i2c_conf.mode, 0, 0, 0);
+}
+
+#endif
+
 void app_main(void)
 {
     static lv_disp_draw_buf_t disp_buf; // contains internal graphic buffer(s) called draw buffer(s)
@@ -277,6 +304,8 @@ void app_main(void)
 
 #if CONFIG_EXAMPLE_LCD_TOUCH_ENABLED
     esp_lcd_panel_io_handle_t tp_io_handle = NULL;
+
+#if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_STMPE610
     esp_lcd_panel_io_spi_config_t tp_io_config = ESP_LCD_TOUCH_IO_SPI_STMPE610_CONFIG(EXAMPLE_PIN_NUM_TOUCH_CS);
     // Attach the TOUCH to the SPI bus
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST, &tp_io_config, &tp_io_handle));
@@ -292,10 +321,36 @@ void app_main(void)
             .mirror_y = 0,
         },
     };
-
-#if CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_STMPE610
     ESP_LOGI(TAG, "Initialize touch controller STMPE610");
     ESP_ERROR_CHECK(esp_lcd_touch_new_spi_stmpe610(tp_io_handle, &tp_cfg, &tp));
+#elif CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_CST816S
+
+    ESP_LOGI(TAG, "Initialize i2c for touch controller CST816S");
+    i2c_init();
+
+    ESP_LOGI(TAG, "Create touch controller CST816S");
+    esp_lcd_panel_io_i2c_config_t tp_io_config = ESP_LCD_TOUCH_IO_I2C_CST816S_CONFIG();
+    // Attach the TOUCH to the SPI bus
+    ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c((esp_lcd_i2c_bus_handle_t)0, &tp_io_config, &tp_io_handle));
+
+    esp_lcd_touch_config_t tp_cfg = {
+        .x_max = EXAMPLE_LCD_H_RES,
+        .y_max = EXAMPLE_LCD_V_RES,
+        .rst_gpio_num = 13,
+        .int_gpio_num = 5,
+        .levels = {
+            .reset = 0,
+            .interrupt = 0,
+        },
+        .flags = {
+            .swap_xy = 0,
+            .mirror_x = 0,
+            .mirror_y = 0,
+        },
+    };
+
+    ESP_LOGI(TAG, "Initialize touch controller CST816S");
+    ESP_ERROR_CHECK(esp_lcd_touch_new_i2c_cst816s(tp_io_handle, &tp_cfg, &tp));
 #endif // CONFIG_EXAMPLE_LCD_TOUCH_CONTROLLER_STMPE610
 #endif // CONFIG_EXAMPLE_LCD_TOUCH_ENABLED
 
